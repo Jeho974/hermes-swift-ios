@@ -135,6 +135,91 @@ public enum WebViewConfiguration {
         """
             let speechShimScript = WKUserScript(source: speechShim, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             userContent.addUserScript(speechShimScript)
+
+            // Hermes WebUI intentionally stops polling cron completions while the
+            // document is hidden. iOS then suspends WKWebView, so a server-side job
+            // cannot create a notification after the app is closed. Mirror the
+            // task's schedule into UNUserNotificationCenter while the app is open;
+            // the local reminder is then owned and delivered by iOS.
+            let cronReminderShim = #"""
+        (function installHermexCronReminders() {
+          if (window.__hermexCronReminderInstaller) return;
+          window.__hermexCronReminderInstaller = true;
+
+          const invoke = (method, params) => {
+            if (!window.hermes || typeof window.hermes.invoke !== "function") return Promise.resolve();
+            return window.hermes.invoke(method, params || {}).catch(() => {});
+          };
+          const scheduleText = (job) => {
+            if (!job) return "";
+            if (typeof job.schedule === "string") return job.schedule;
+            if (job.schedule && typeof job.schedule === "object") {
+              return job.schedule.run_at || job.schedule.expr || job.schedule.expression || job.schedule_display || "";
+            }
+            return job.schedule_display || "";
+          };
+          const register = (job) => {
+            if (!job || job.enabled === false || job.toast_notifications === false || !job.id) return Promise.resolve();
+            const schedule = scheduleText(job);
+            if (!schedule) return Promise.resolve();
+            return invoke("capability.notifications.scheduleCron", {
+              jobId: String(job.id),
+              name: String(job.name || "Tâche Hermes"),
+              schedule: String(schedule)
+            });
+          };
+          const parseBody = (options) => {
+            try { return options && options.body ? JSON.parse(options.body) : {}; }
+            catch (_) { return {}; }
+          };
+
+          const install = () => {
+            if (typeof window.api !== "function") { setTimeout(install, 250); return; }
+            if (window.api.__hermexCronWrapped) return;
+            const original = window.api;
+            const wrapped = async function(path, options) {
+              const result = await original.apply(this, arguments);
+              try {
+                const body = parseBody(options);
+                if (path === "/api/crons/create" && body.toast_notifications !== false) {
+                  const job = (result && result.job) || Object.assign({}, body, {id: result && result.id});
+                  await register(job);
+                } else if (path === "/api/crons/update" && body.job_id) {
+                  if (body.toast_notifications === false) {
+                    await invoke("capability.notifications.cancelCron", {jobId: String(body.job_id)});
+                  } else {
+                    const refreshed = await original("/api/crons");
+                    const job = (refreshed.jobs || []).find(j => String(j.id) === String(body.job_id));
+                    if (job) await register(job);
+                  }
+                } else if (path === "/api/crons/delete" && body.job_id) {
+                  await invoke("capability.notifications.cancelCron", {jobId: String(body.job_id)});
+                }
+              } catch (_) {}
+              return result;
+            };
+            Object.assign(wrapped, original);
+            wrapped.__hermexCronWrapped = true;
+            window.api = wrapped;
+
+            // Reconcile existing tasks on each app launch. This also covers tasks
+            // that Hermes created from chat or another client while this app was closed.
+            setTimeout(async () => {
+              try {
+                const data = await original("/api/crons");
+                await invoke("capability.notifications.clearCronReminders", {});
+                for (const job of (data.jobs || [])) await register(job);
+              } catch (_) {}
+            }, 1000);
+          };
+          install();
+        })();
+        """#
+            userContent.addUserScript(WKUserScript(
+                source: cronReminderShim,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            ))
         }
 
         config.userContentController = userContent
