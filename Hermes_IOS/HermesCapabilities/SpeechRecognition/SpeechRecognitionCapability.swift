@@ -137,7 +137,10 @@ public final class SpeechRecognitionCapability: Capability, @unchecked Sendable 
 
                 do {
                     let session = AVAudioSession.sharedInstance()
-                    try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .duckOthers])
+                    // Xcode 16's iOS 18 SDK predates `.allowBluetoothHFP`.
+                    // `.allowBluetooth` provides the equivalent hands-free input
+                    // behavior while keeping the unsigned SideStore build portable.
+                    try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .duckOthers])
                     try session.setActive(true, options: .notifyOthersOnDeactivation)
                     engine.prepare()
                     try engine.start()
