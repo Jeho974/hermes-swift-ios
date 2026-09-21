@@ -2,6 +2,18 @@
 
 Native iPhone client for connecting to a webui over Tailscale.
 
+## Hermex Notify fork
+
+This fork mirrors enabled Hermes cron schedules into iOS local notifications.
+The reminder is registered while the app is open and remains scheduled by iOS
+after WebKit or the app is suspended. Existing tasks are reconciled whenever the
+app opens, including tasks created from another Hermes client.
+
+The GitHub workflow `Build SideStore IPA` produces an unsigned IPA that
+SideStore signs during installation. These are local reminders, not APNs remote
+pushes: the alert announces that the scheduled task is starting and opens Hermex
+so its saved output can be viewed.
+
 ## Connection Flow (Tailscale)
 
 1. Install Tailscale on the machine running your webui and on iPhone.
