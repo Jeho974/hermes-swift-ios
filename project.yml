@@ -48,9 +48,9 @@ targets:
     info:
       path: Hermes_IOS/Info.plist
       properties:
-        CFBundleDisplayName: WebUI App
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleDisplayName: Hermex Notify
+        CFBundleShortVersionString: "1.7.0"
+        CFBundleVersion: "170"
         LSRequiresIPhoneOS: true
         # Encryption export classification — we use standard TLS only (URLSession + WKWebView),
         # which is exempt under "uses or accesses only exempt cryptography." Declaring false here
